@@ -1,6 +1,8 @@
 // Core Tic-Tac-Toe logic + minimax engine.
 // Cells are numbered 0..8 (row-major). 0 = empty, 1 = X, 2 = O.
 
+import type { Msg } from '../i18n.tsx';
+
 export type Cell = 0 | 1 | 2;
 export type Board = Cell[];
 export type Player = 1 | 2;
@@ -49,15 +51,15 @@ export function countMarks(b: ArrayLike<number>) {
 }
 
 export type BoardStatus =
-  | { kind: 'invalid'; reason: string }
+  | { kind: 'invalid'; reason: Msg }
   | { kind: 'over'; winner: Cell; line: readonly number[] | null }
   | { kind: 'playing'; toMove: Player };
 
 /** Checks whether a board can be reached in a real game, and whose turn it is. */
 export function boardStatus(b: Board): BoardStatus {
   const { x, o, empty } = countMarks(b);
-  if (x < o) return { kind: 'invalid', reason: 'มี O มากกว่า X ซึ่งเป็นไปไม่ได้ เพราะ X เดินก่อนเสมอ' };
-  if (x > o + 1) return { kind: 'invalid', reason: `X มากกว่า O เกิน 1 ตัว (X ${x}, O ${o}) แปลว่ามีฝ่ายเดินซ้อนสองตา` };
+  if (x < o) return { kind: 'invalid', reason: { th: 'มี O มากกว่า X ซึ่งเป็นไปไม่ได้ เพราะ X เดินก่อนเสมอ', en: 'There are more O than X, which is impossible because X always moves first.' } };
+  if (x > o + 1) return { kind: 'invalid', reason: { th: `X มากกว่า O เกิน 1 ตัว (X ${x}, O ${o}) แปลว่ามีฝ่ายเดินซ้อนสองตา`, en: `X has more than one extra mark (X ${x}, O ${o}), so someone moved twice in a row.` } };
 
   let xLines = 0;
   let oLines = 0;
@@ -67,9 +69,9 @@ export function boardStatus(b: Board): BoardStatus {
       else oLines++;
     }
   }
-  if (xLines > 0 && oLines > 0) return { kind: 'invalid', reason: 'ทั้ง X และ O เรียงครบ 3 พร้อมกัน ซึ่งเป็นไปไม่ได้' };
-  if (xLines > 0 && x !== o + 1) return { kind: 'invalid', reason: 'X ชนะแล้ว แต่ O ยังได้เดินต่อหลังจากนั้น' };
-  if (oLines > 0 && x !== o) return { kind: 'invalid', reason: 'O ชนะแล้ว แต่ X ยังได้เดินต่อหลังจากนั้น' };
+  if (xLines > 0 && oLines > 0) return { kind: 'invalid', reason: { th: 'ทั้ง X และ O เรียงครบ 3 พร้อมกัน ซึ่งเป็นไปไม่ได้', en: 'Both X and O have three in a row, which cannot happen.' } };
+  if (xLines > 0 && x !== o + 1) return { kind: 'invalid', reason: { th: 'X ชนะแล้ว แต่ O ยังได้เดินต่อหลังจากนั้น', en: 'X has already won, yet O kept playing afterwards.' } };
+  if (oLines > 0 && x !== o) return { kind: 'invalid', reason: { th: 'O ชนะแล้ว แต่ X ยังได้เดินต่อหลังจากนั้น', en: 'O has already won, yet X kept playing afterwards.' } };
 
   if (xLines > 0) return { kind: 'over', winner: 1, line: winningLine(b) };
   if (oLines > 0) return { kind: 'over', winner: 2, line: winningLine(b) };

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { symbol, type Cell } from '../lib/game.ts';
+import { useLang } from '../i18n.tsx';
 import {
   boardOf,
   buildGameTree,
@@ -18,8 +19,6 @@ import {
 //   levels always fit the canvas height, which keeps the whole tree readable.
 // ---------------------------------------------------------------------------
 
-const TOP_PAD = 92;
-const BOTTOM_PAD = 64;
 const BOARD_MIN = 15; // below this on-screen size a node is drawn as a block
 const SIDE_MARGIN = 40;
 
@@ -40,10 +39,14 @@ function readColors(): Colors {
 
 const valueColor = (c: Colors, v: number) => (v > 0 ? c.x : v < 0 ? c.o : c.draw);
 
+/** Vertical layout of the 10 depth rows; paddings shrink on short screens (e.g. phones in landscape). */
 function levelGeometry(h: number) {
-  const gap = (h - TOP_PAD - BOTTOM_PAD) / 9;
-  const maxBoard = Math.max(18, Math.min(gap * 0.62, 64));
-  return { gap, maxBoard, rowY: (d: number) => TOP_PAD + d * gap };
+  const short = h < 520;
+  const top = short ? 62 : 92; // room for the toolbar overlay
+  const bottom = short ? 40 : 64; // room for the legend
+  const gap = Math.max(8, (h - top - bottom) / 9);
+  const maxBoard = Math.max(10, Math.min(gap * 0.62, 64));
+  return { top, gap, maxBoard, rowY: (d: number) => top + d * gap };
 }
 
 /** On-screen size a node may use without overlapping its neighbours. */
@@ -118,6 +121,7 @@ function drawMiniBoard(
 // ---------------------------------------------------------------------------
 
 export default function TreeExplorer() {
+  const { t } = useLang();
   const [tree, setTree] = useState<GameTree | null>(cachedTree);
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -142,6 +146,7 @@ export default function TreeExplorer() {
   // ------------------------------------------------------------------ draw
   const draw = useCallback(() => {
     frameRef.current = 0;
+    const started = performance.now();
     const t = tree;
     const canvas = canvasRef.current;
     if (!t || !canvas) return;
@@ -258,6 +263,13 @@ export default function TreeExplorer() {
       ctx.roundRect(sx - r, rowY(d) - r, r * 2, r * 2, Math.max(4, r * 0.3));
       ctx.stroke();
     }
+
+    // frame-cost probe: a 120 Hz display gives ~8.3 ms per frame
+    const ms = performance.now() - started;
+    const probe = ((window as unknown as { __treeDraw?: { last: number; max: number; frames: number } }).__treeDraw ??= { last: 0, max: 0, frames: 0 });
+    probe.last = ms;
+    probe.max = Math.max(probe.max, ms);
+    probe.frames++;
   }, [tree]);
 
   const requestDraw = useCallback(() => {
@@ -343,9 +355,9 @@ export default function TreeExplorer() {
     const t = tree;
     if (!t) return -1;
     const { h } = sizeRef.current;
-    const { gap, maxBoard, rowY } = levelGeometry(h);
+    const { top, gap, maxBoard, rowY } = levelGeometry(h);
     const { ox, s } = viewRef.current;
-    const d = Math.round((sy - TOP_PAD) / gap);
+    const d = Math.round((sy - top) / gap);
     if (d < 0 || d > 9) return -1;
     const level = t.levels[d];
     const i = lowerBound(t, level, ox + sx / s);
@@ -416,6 +428,43 @@ export default function TreeExplorer() {
     };
   }, [tree, draw, requestDraw, clampView, setView, zoomAt]);
 
+  // Dev-only benchmark: renders frames synchronously across the whole zoom range
+  // (works even when the tab is hidden and rAF is throttled). Run short ranges,
+  // e.g. __treeBench(0, 60): hundreds of back-to-back frames without presenting
+  // fill the canvas command buffer and cause one artificial flush spike.
+  useEffect(() => {
+    if (!import.meta.env.DEV || !tree) return;
+    const w = window as unknown as { __treeBench?: (from?: number, to?: number) => object };
+    w.__treeBench = (from = 0, to = 300) => {
+      // size the canvas from layout directly, in case ResizeObserver has not fired
+      const stage = stageRef.current!;
+      const canvas = canvasRef.current!;
+      const r = stage.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      sizeRef.current = { w: r.width, h: r.height };
+      canvas.width = Math.round(r.width * dpr);
+      canvas.height = Math.round(r.height * dpr);
+      const saved = { ...viewRef.current };
+      const { sMin, sMax, w: width } = limits();
+      const times: number[] = [];
+      for (let k = from; k <= to; k++) {
+        const s = Math.exp(Math.log(sMin) + (Math.log(sMax) - Math.log(sMin)) * (k / 300));
+        const centre = tree.leafCount * ((k * 7919) % 1000) / 1000; // spread over the tree
+        viewRef.current = clampView({ s, ox: centre - width / 2 / s });
+        const t0 = performance.now();
+        draw();
+        times.push(performance.now() - t0);
+      }
+      viewRef.current = saved;
+      draw();
+      const sorted = [...times].sort((a, b) => a - b);
+      const q = (p: number) => +sorted[Math.floor(p * (sorted.length - 1))].toFixed(2);
+      const slowest = times.map((ms, k) => ({ k, ms: +ms.toFixed(1) })).sort((a, b) => b.ms - a.ms).slice(0, 5);
+      return { frames: times.length, medianMs: q(0.5), p95Ms: q(0.95), maxMs: q(1), budget120HzMs: 8.33, slowest };
+    };
+    return () => { delete w.__treeBench; };
+  }, [tree, draw, limits, clampView]);
+
   useEffect(() => {
     selectedRef.current = selected;
     requestDraw();
@@ -484,9 +533,15 @@ export default function TreeExplorer() {
     flyTo(id);
   };
 
+  const selectAndFly = useCallback((id: number) => { setSelected(id); flyTo(id); }, [flyTo]);
+
   // ---------------------------------------------------------------- render
   if (!tree) {
-    return <main className="page full"><div className="loading" style={{ flex: 1 }}>กำลังสร้าง game tree ทั้งต้น (549,946 node)…</div></main>;
+    return (
+      <main className="page full">
+        <div className="loading" style={{ flex: 1 }}>{t('กำลังสร้าง game tree ทั้งต้น (549,946 node)…', 'Building the full game tree (549,946 nodes)…')}</div>
+      </main>
+    );
   }
 
   const { gap, rowY } = levelGeometry(stageSize.h || 600);
@@ -502,39 +557,41 @@ export default function TreeExplorer() {
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
             onPointerLeave={() => setHover(null)}
-            aria-label="Game tree ของ Tic-Tac-Toe ทั้งต้น"
+            aria-label={t('Game tree ของ Tic-Tac-Toe ทั้งต้น', 'The complete Tic-Tac-Toe game tree')}
           />
           <div className="tree-overlay">
-            <button className="btn" onClick={() => zoomAt(2, sizeRef.current.w / 2)} aria-label="ซูมเข้า">＋</button>
-            <button className="btn" onClick={() => zoomAt(0.5, sizeRef.current.w / 2)} aria-label="ซูมออก">－</button>
-            <button className="btn" onClick={fit}>ดูทั้งต้น</button>
-            <button className="btn" onClick={() => selected >= 0 && flyTo(selected)} disabled={selected < 0}>ไปที่ node ที่เลือก</button>
-            <button className="btn" onClick={randomGame}>สุ่มเกม 🎲</button>
+            <button className="btn" onClick={() => zoomAt(2, sizeRef.current.w / 2)} aria-label={t('ซูมเข้า', 'Zoom in')}>＋</button>
+            <button className="btn" onClick={() => zoomAt(0.5, sizeRef.current.w / 2)} aria-label={t('ซูมออก', 'Zoom out')}>－</button>
+            <button className="btn" onClick={fit}>{t('ดูทั้งต้น', 'Fit')}</button>
+            <button className="btn" onClick={() => selected >= 0 && flyTo(selected)} disabled={selected < 0}>{t('ไปที่ node ที่เลือก', 'Go to selection')}</button>
+            <button className="btn" onClick={randomGame}>{t('สุ่มเกม', 'Random game')} 🎲</button>
           </div>
-          {stageSize.h > 0 && gap > 22 && (
+          {stageSize.h > 0 && gap > 22 && stageSize.w >= 480 && (
             <div className="depth-labels">
               {Array.from({ length: 10 }, (_, d) => (
                 <span key={d} style={{ top: rowY(d) }}>
-                  {d === 0 ? 'เริ่ม' : `ตา ${d} · ${d % 2 ? 'X' : 'O'}`}
+                  {d === 0 ? t('เริ่ม', 'start') : `${t('ตา', 'ply')} ${d} · ${d % 2 ? 'X' : 'O'}`}
                 </span>
               ))}
             </div>
           )}
           <div className="legend">
-            <span><i style={{ background: 'var(--x)' }} />X ชนะได้</span>
-            <span><i style={{ background: 'var(--o)' }} />O ชนะได้</span>
-            <span><i style={{ background: 'var(--draw)' }} />เสมอ</span>
-            <span className="muted">ลากเพื่อเลื่อน · scroll / pinch เพื่อซูม · คลิกเพื่อเลือก</span>
+            <span><i style={{ background: 'var(--x)' }} />{t('X ชนะได้', 'X can win')}</span>
+            <span><i style={{ background: 'var(--o)' }} />{t('O ชนะได้', 'O can win')}</span>
+            <span><i style={{ background: 'var(--draw)' }} />{t('เสมอ', 'Draw')}</span>
+            <span className="muted legend-hint">{t('ลากเพื่อเลื่อน · scroll / pinch เพื่อซูม · แตะเพื่อเลือก', 'Drag to pan · scroll / pinch to zoom · tap to select')}</span>
           </div>
-          {hover && <Tooltip t={tree} id={hover.id} x={hover.x} y={hover.y} w={stageSize.w} />}
+          {hover && <Tooltip tree={tree} id={hover.id} x={hover.x} y={hover.y} w={stageSize.w} />}
         </div>
-        <SidePanel t={tree} selected={selected} onSelect={(id) => { setSelected(id); flyTo(id); }} />
+        <SidePanel tree={tree} selected={selected} onSelect={selectAndFly} />
       </div>
     </main>
   );
 }
 
 // ---------------------------------------------------------------------------
+
+type Tr = ReturnType<typeof useLang>['t'];
 
 function MiniBoard({ board, last }: { board: Cell[]; last?: number }) {
   return (
@@ -546,121 +603,132 @@ function MiniBoard({ board, last }: { board: Cell[]; last?: number }) {
   );
 }
 
-function valueText(t: GameTree, id: number) {
-  const v = t.value[id];
-  if (v === 0) return 'เสมอ (ถ้าเล่นดีที่สุดทั้งคู่)';
+function valueText(tree: GameTree, id: number, t: Tr) {
+  const v = tree.value[id];
+  if (v === 0) return tree.result[id] ? t('เสมอแล้ว', 'Drawn') : t('เสมอ (ถ้าเล่นดีที่สุดทั้งคู่)', 'Draw (with perfect play)');
   const who = v > 0 ? 'X' : 'O';
-  const plies = t.depth[id] === 9 && t.result[id] ? 0 : 9 - t.depth[id] - (Math.abs(v) - 10);
-  return plies === 0 ? `${who} ชนะแล้ว` : `${who} ชนะได้ใน ${plies} ตา`;
+  const plies = 9 - tree.depth[id] - (Math.abs(v) - 10);
+  if (plies === 0) return t(`${who} ชนะแล้ว`, `${who} has won`);
+  return t(`${who} ชนะได้ใน ${plies} ตา`, `${who} wins in ${plies} ${plies === 1 ? 'ply' : 'plies'}`);
 }
 
-function resultText(r: number) {
-  return r === RESULT_X ? 'X ชนะ' : r === RESULT_O ? 'O ชนะ' : r === RESULT_DRAW ? 'เสมอ (กระดานเต็ม)' : '';
+function resultText(r: number, t: Tr) {
+  return r === RESULT_X ? t('X ชนะ', 'X wins') : r === RESULT_O ? t('O ชนะ', 'O wins') : r === RESULT_DRAW ? t('เสมอ (กระดานเต็ม)', 'Draw (board full)') : '';
 }
 
-function stepLabel(t: GameTree, id: number) {
-  const d = t.depth[id];
-  if (d === 0) return 'เริ่มเกม (กระดานว่าง)';
-  return `ตา ${d}: ${d % 2 ? 'X' : 'O'} ลงช่อง ${t.move[id] + 1}`;
+function stepLabel(tree: GameTree, id: number, t: Tr) {
+  const d = tree.depth[id];
+  if (d === 0) return t('เริ่มเกม (กระดานว่าง)', 'Start (empty board)');
+  const who = d % 2 ? 'X' : 'O';
+  return t(`ตา ${d}: ${who} ลงช่อง ${tree.move[id] + 1}`, `Ply ${d}: ${who} plays cell ${tree.move[id] + 1}`);
 }
 
-function leafCount(t: GameTree, id: number) {
+function leafCount(tree: GameTree, id: number) {
   let l = id;
   let r = id;
-  while (t.childCount[l] > 0) l = t.levels[t.depth[l] + 1][t.childStart[l]];
-  while (t.childCount[r] > 0) r = t.levels[t.depth[r] + 1][t.childStart[r] + t.childCount[r] - 1];
-  return t.x[r] - t.x[l] + 1;
+  while (tree.childCount[l] > 0) l = tree.levels[tree.depth[l] + 1][tree.childStart[l]];
+  while (tree.childCount[r] > 0) r = tree.levels[tree.depth[r] + 1][tree.childStart[r] + tree.childCount[r] - 1];
+  return tree.x[r] - tree.x[l] + 1;
 }
 
-function Tooltip({ t, id, x, y, w }: { t: GameTree; id: number; x: number; y: number; w: number }) {
+function Tooltip({ tree, id, x, y, w }: { tree: GameTree; id: number; x: number; y: number; w: number }) {
+  const { t } = useLang();
   const left = x + 150 > w ? x - 146 : x + 14;
   return (
     <div className="tooltip" style={{ left, top: y + 14 }}>
-      <MiniBoard board={boardOf(t, id)} last={t.move[id]} />
-      <div style={{ marginTop: 6 }}>{stepLabel(t, id)}</div>
-      <div className="muted">{t.result[id] ? resultText(t.result[id]) : valueText(t, id)}</div>
+      <MiniBoard board={boardOf(tree, id)} last={tree.move[id]} />
+      <div style={{ marginTop: 6 }}>{stepLabel(tree, id, t)}</div>
+      <div className="muted">{tree.result[id] ? resultText(tree.result[id], t) : valueText(tree, id, t)}</div>
     </div>
   );
 }
 
-function SidePanel({ t, selected, onSelect }: { t: GameTree; selected: number; onSelect: (id: number) => void }) {
-  const path = useMemo(() => (selected >= 0 ? pathTo(t, selected) : []), [t, selected]);
+// memo: hovering the canvas re-renders the page; the panel only changes with the selection
+const SidePanel = memo(function SidePanel({ tree, selected, onSelect }: { tree: GameTree; selected: number; onSelect: (id: number) => void }) {
+  const { t, num } = useLang();
+  const path = useMemo(() => (selected >= 0 ? pathTo(tree, selected) : []), [tree, selected]);
   const children = useMemo(() => {
-    if (selected < 0 || !t.childCount[selected]) return [];
-    const d = t.depth[selected];
-    const start = t.childStart[selected];
-    return Array.from(t.levels[d + 1].subarray(start, start + t.childCount[selected]));
-  }, [t, selected]);
+    if (selected < 0 || !tree.childCount[selected]) return [];
+    const d = tree.depth[selected];
+    const start = tree.childStart[selected];
+    return Array.from(tree.levels[d + 1].subarray(start, start + tree.childCount[selected]));
+  }, [tree, selected]);
 
   if (selected < 0) {
     return (
       <aside className="side">
-        <h2>Game Tree ทั้งต้น</h2>
+        <h2>{t('Game Tree ทั้งต้น', 'The complete game tree')}</h2>
         <p className="muted">
-          แต่ละแถวคือตาที่เดิน (ตา 1 คือ X, ตา 2 คือ O, …) ทุก node คือกระดานหนึ่งแบบ ตามลำดับการเดินที่ต่างกันทั้งหมด
-          รวม <b>{t.size.toLocaleString()}</b> node และ <b>{t.leafCount.toLocaleString()}</b> เกมที่จบ
+          {t(
+            <>แต่ละแถวคือตาที่เดิน (ตา 1 คือ X, ตา 2 คือ O, …) ทุก node คือกระดานหนึ่งแบบ ตามลำดับการเดินที่ต่างกันทั้งหมด รวม <b>{num(tree.size)}</b> node และ <b>{num(tree.leafCount)}</b> เกมที่จบ</>,
+            <>Each row is one ply (ply 1 is X, ply 2 is O, …). Every node is a board reached by a distinct move sequence: <b>{num(tree.size)}</b> nodes and <b>{num(tree.leafCount)}</b> finished games in total.</>,
+          )}
         </p>
         <p className="muted">
-          สีของ node คือ <b>ค่า minimax</b> ของกระดานนั้น ซึ่งบอกว่าถ้าเล่นต่อแบบดีที่สุดทั้งสองฝ่าย ใครจะชนะ
-          node ที่ขอบหนาคือเกมที่จบแล้ว (terminal)
+          {t(
+            <>สีของ node คือ <b>ค่า minimax</b> ของกระดานนั้น ซึ่งบอกว่าถ้าเล่นต่อแบบดีที่สุดทั้งสองฝ่าย ใครจะชนะ node ที่ขอบหนาคือเกมที่จบแล้ว (terminal)</>,
+            <>A node's colour is the <b>minimax value</b> of its board: who wins if both sides play perfectly from there. Thick-bordered nodes are finished (terminal) games.</>,
+          )}
         </p>
-        <p className="muted">ลองคลิก node ไหนก็ได้ หรือกด <b>สุ่มเกม 🎲</b> แล้วเส้นทางจาก root จะถูกไฮไลต์</p>
-        <button className="btn primary" onClick={() => onSelect(0)}>เริ่มที่ root</button>
+        <p className="muted">
+          {t(<>ลองแตะ node ไหนก็ได้ หรือกด <b>สุ่มเกม 🎲</b> แล้วเส้นทางจาก root จะถูกไฮไลต์</>, <>Tap any node, or press <b>Random game 🎲</b>, and its path from the root will be highlighted.</>)}
+        </p>
+        <button className="btn primary" onClick={() => onSelect(0)}>{t('เริ่มที่ root', 'Start at the root')}</button>
       </aside>
     );
   }
 
   return (
     <aside className="side">
-      <h2>{stepLabel(t, selected)}</h2>
-      <div style={{ width: 160 }}>
-        <MiniBoard board={boardOf(t, selected)} last={t.move[selected]} />
+      <h2>{stepLabel(tree, selected, t)}</h2>
+      <div className="side-board">
+        <MiniBoard board={boardOf(tree, selected)} last={tree.move[selected]} />
       </div>
       <dl className="kv">
-        <dt>ความลึก</dt><dd>{t.depth[selected]}</dd>
-        {t.result[selected] ? (<><dt>ผลเกม</dt><dd>{resultText(t.result[selected])}</dd></>) : (
-          <><dt>ตาถัดไป</dt><dd>{t.depth[selected] % 2 ? 'O' : 'X'}</dd></>
+        <dt>{t('ความลึก', 'Depth')}</dt><dd>{tree.depth[selected]}</dd>
+        {tree.result[selected] ? (
+          <><dt>{t('ผลเกม', 'Result')}</dt><dd>{resultText(tree.result[selected], t)}</dd></>
+        ) : (
+          <><dt>{t('ตาถัดไป', 'To move')}</dt><dd>{tree.depth[selected] % 2 ? 'O' : 'X'}</dd></>
         )}
-        <dt>ค่า minimax</dt><dd>{valueText(t, selected)}</dd>
-        {!t.result[selected] && (
+        <dt>{t('ค่า minimax', 'Minimax value')}</dt><dd>{valueText(tree, selected, t)}</dd>
+        {!tree.result[selected] && (
           <>
-            <dt>node ลูกหลาน</dt><dd>{(t.subtree[selected] - 1).toLocaleString()}</dd>
-            <dt>เกมที่จบได้</dt><dd>{leafCount(t, selected).toLocaleString()}</dd>
+            <dt>{t('node ลูกหลาน', 'Descendants')}</dt><dd>{num(tree.subtree[selected] - 1)}</dd>
+            <dt>{t('เกมที่จบได้', 'Finished games')}</dt><dd>{num(leafCount(tree, selected))}</dd>
           </>
         )}
       </dl>
 
       {children.length > 0 && (
         <>
-          <h3 style={{ marginTop: 16 }}>ตาถัดไปที่เป็นไปได้</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <h3 style={{ marginTop: 16 }}>{t('ตาถัดไปที่เป็นไปได้', 'Possible next moves')}</h3>
+          <div className="child-grid">
             {children.map((c) => (
               <button
                 key={c}
                 onClick={() => onSelect(c)}
-                title={`${stepLabel(t, c)} · ${valueText(t, c)}`}
-                style={{
-                  padding: 4, borderRadius: 8, cursor: 'pointer', background: 'var(--bg)',
-                  border: `2px solid ${t.value[c] > 0 ? 'var(--x)' : t.value[c] < 0 ? 'var(--o)' : 'var(--draw)'}`,
-                }}
+                title={`${stepLabel(tree, c, t)} · ${valueText(tree, c, t)}`}
+                className="child-btn"
+                style={{ borderColor: tree.value[c] > 0 ? 'var(--x)' : tree.value[c] < 0 ? 'var(--o)' : 'var(--draw)' }}
               >
-                <MiniBoard board={boardOf(t, c)} last={t.move[c]} />
+                <MiniBoard board={boardOf(tree, c)} last={tree.move[c]} />
               </button>
             ))}
           </div>
         </>
       )}
 
-      <h3 style={{ marginTop: 20 }}>เส้นทางจาก root</h3>
+      <h3 style={{ marginTop: 20 }}>{t('เส้นทางจาก root', 'Path from the root')}</h3>
       <ol className="path-list">
         {path.map((id) => (
           <li key={id}>
             <button className={id === selected ? 'current' : ''} onClick={() => onSelect(id)}>
-              <MiniBoard board={boardOf(t, id)} last={t.move[id]} />
+              <MiniBoard board={boardOf(tree, id)} last={tree.move[id]} />
               <span>
-                {stepLabel(t, id)}
+                {stepLabel(tree, id, t)}
                 <br />
-                <span className="muted">{valueText(t, id)}</span>
+                <span className="muted">{valueText(tree, id, t)}</span>
               </span>
             </button>
           </li>
@@ -668,4 +736,4 @@ function SidePanel({ t, selected, onSelect }: { t: GameTree; selected: number; o
       </ol>
     </aside>
   );
-}
+});
