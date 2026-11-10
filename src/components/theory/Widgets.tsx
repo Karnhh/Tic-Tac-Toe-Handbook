@@ -12,7 +12,7 @@ import {
   type Cell,
   type Player,
 } from '../../lib/game.ts';
-import { useLang, type Lang } from '../../i18n.tsx';
+import { useLang } from '../../i18n.tsx';
 
 type T = { th: string; en: string };
 
@@ -390,7 +390,7 @@ export function ImperfectInfoDemo() {
     <div className="widget">
       <div className="seg wrap">
         {SCENARIOS.map((x, i) => (
-          <button key={i} className={`text ${sc === i ? 'on' : ''}`} onClick={() => setSc(i)}>{x[lang as Lang]}</button>
+          <button key={i} className={`text ${sc === i ? 'on' : ''}`} onClick={() => setSc(i)}>{x[lang]}</button>
         ))}
       </div>
       <div className="calc" style={{ marginTop: 12 }}>

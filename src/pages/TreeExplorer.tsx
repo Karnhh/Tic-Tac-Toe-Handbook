@@ -264,12 +264,14 @@ export default function TreeExplorer() {
       ctx.stroke();
     }
 
-    // frame-cost probe: a 120 Hz display gives ~8.3 ms per frame
-    const ms = performance.now() - started;
-    const probe = ((window as unknown as { __treeDraw?: { last: number; max: number; frames: number } }).__treeDraw ??= { last: 0, max: 0, frames: 0 });
-    probe.last = ms;
-    probe.max = Math.max(probe.max, ms);
-    probe.frames++;
+    // dev-only frame-cost probe (a 120 Hz display gives ~8.3 ms per frame)
+    if (import.meta.env.DEV) {
+      const ms = performance.now() - started;
+      const probe = ((window as unknown as { __treeDraw?: { last: number; max: number; frames: number } }).__treeDraw ??= { last: 0, max: 0, frames: 0 });
+      probe.last = ms;
+      probe.max = Math.max(probe.max, ms);
+      probe.frames++;
+    }
   }, [tree]);
 
   const requestDraw = useCallback(() => {

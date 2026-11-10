@@ -20,8 +20,8 @@ const TOC: [string, string, string][] = [
   ['summary', 'สรุป', 'Summary'],
 ];
 
-/** Numbered section heading (`id` is kept on the <section> for anchors). */
-function H({ n, th, en }: { id?: string; n: number; th: string; en: string }) {
+/** Numbered section heading; anchor ids live on the surrounding <section>. */
+function H({ n, th, en }: { n: number; th: string; en: string }) {
   const { t } = useLang();
   return <h2><span className="num">{String(n).padStart(2, '0')}</span>{t(th, en)}</h2>;
 }
@@ -61,7 +61,7 @@ export default function Theory() {
 
       {/* 1 ------------------------------------------------------------------ */}
       <section id="games" className="t-section">
-        <H id="games" n={1} th="เกมต่างจากปัญหาค้นหาทั่วไปอย่างไร" en="How games differ from search problems" />
+        <H n={1} th="เกมต่างจากปัญหาค้นหาทั่วไปอย่างไร" en="How games differ from search problems" />
         <div className="two-col">
           <div>
             <p>
@@ -90,7 +90,7 @@ export default function Theory() {
 
       {/* 2 ------------------------------------------------------------------ */}
       <section id="types" className="t-section">
-        <H id="types" n={2} th="ประเภทของเกม" en="Types of games" />
+        <H n={2} th="ประเภทของเกม" en="Types of games" />
         <p>
           {t(
             <>แบ่งเกมได้ด้วยสองคำถาม: <b>มีโชคเข้ามาเกี่ยวไหม</b> (deterministic หรือ chance) และ <b>เห็นข้อมูลครบไหม</b> (perfect หรือ imperfect information) แต่ละแบบต้องใช้วิธีคิดต่างกัน</>,
@@ -102,7 +102,7 @@ export default function Theory() {
 
       {/* 3 ------------------------------------------------------------------ */}
       <section id="formal" className="t-section">
-        <H id="formal" n={3} th="นิยามเกมอย่างเป็นทางการ" en="Formal definition of a game" />
+        <H n={3} th="นิยามเกมอย่างเป็นทางการ" en="Formal definition of a game" />
         <p>
           {t(
             <>ในบทนี้เกมสองผู้เล่นเรียกฝ่ายที่เดินก่อนว่า <b>MAX</b> และอีกฝ่ายว่า <b>MIN</b> เกมหนึ่งเกมนิยามได้ด้วยองค์ประกอบต่อไปนี้</>,
@@ -130,7 +130,7 @@ export default function Theory() {
 
       {/* 4 ------------------------------------------------------------------ */}
       <section id="minimax" className="t-section">
-        <H id="minimax" n={4} th="Minimax" en="Minimax" />
+        <H n={4} th="Minimax" en="Minimax" />
         <div className="two-col">
           <div>
             <p>
@@ -183,7 +183,7 @@ function MIN-VALUE(state)
 
       {/* 5 ------------------------------------------------------------------ */}
       <section id="minimax-props" className="t-section">
-        <H id="minimax-props" n={5} th="คุณสมบัติของ Minimax" en="Properties of minimax" />
+        <H n={5} th="คุณสมบัติของ Minimax" en="Properties of minimax" />
         <p>{t('ให้ b = branching factor (จำนวนตาที่เดินได้ต่อสถานะ) และ m = ความลึกสูงสุดของต้นไม้', 'Let b = branching factor (legal moves per state) and m = maximum depth of the tree.')}</p>
         <RevealCards
           items={[
@@ -215,7 +215,7 @@ function MIN-VALUE(state)
 
       {/* 6 ------------------------------------------------------------------ */}
       <section id="alphabeta" className="t-section">
-        <H id="alphabeta" n={6} th="α–β pruning" en="α–β pruning" />
+        <H n={6} th="α–β pruning" en="α–β pruning" />
         <div className="two-col">
           <div>
             <p>
@@ -279,7 +279,7 @@ function MIN-VALUE(state, α, β)
 
       {/* 7 ------------------------------------------------------------------ */}
       <section id="ab-props" className="t-section">
-        <H id="ab-props" n={7} th="คุณสมบัติของ α–β" en="Properties of α–β" />
+        <H n={7} th="คุณสมบัติของ α–β" en="Properties of α–β" />
         <ul className="t-list">
           <li>{t(<>การตัดกิ่ง <b>ไม่เปลี่ยนผลลัพธ์สุดท้าย</b></>, <>Pruning <b>does not affect the final result</b></>)}</li>
           <li>{t(<><b>ลำดับการเดินที่ดี</b> ช่วยให้ตัดได้มากขึ้น (ลองเลือก "ดีที่สุดก่อน" ในตัวอย่างด้านบน)</>, <><b>Good move ordering</b> makes pruning more effective (try "Best first" above)</>)}</li>
@@ -291,7 +291,7 @@ function MIN-VALUE(state, α, β)
 
       {/* 8 ------------------------------------------------------------------ */}
       <section id="limits" className="t-section">
-        <H id="limits" n={8} th="เมื่อเวลาไม่พอ: Cutoff และ Evaluation function" en="Resource limits: cutoffs and evaluation functions" />
+        <H n={8} th="เมื่อเวลาไม่พอ: Cutoff และ Evaluation function" en="Resource limits: cutoffs and evaluation functions" />
         <p>{t('วิธีมาตรฐานเมื่อค้นจนจบเกมไม่ได้คือเปลี่ยนสองอย่างใน minimax / α–β:', 'The standard approach when we cannot search to the end is to change two things in minimax / α–β:')}</p>
         <ul className="t-list">
           <li>{t(
@@ -324,7 +324,7 @@ function MIN-VALUE(state, α, β)
 
       {/* 9 ------------------------------------------------------------------ */}
       <section id="chance" className="t-section">
-        <H id="chance" n={9} th="เกมที่มีโอกาส: Expectiminimax" en="Games of chance: expectiminimax" />
+        <H n={9} th="เกมที่มีโอกาส: Expectiminimax" en="Games of chance: expectiminimax" />
         <div className="two-col">
           <div>
             <p>
@@ -361,7 +361,7 @@ if state is a CHANCE node then
 
       {/* 10 ----------------------------------------------------------------- */}
       <section id="values" className="t-section">
-        <H id="values" n={10} th="ค่าที่แน่นอนของ Eval สำคัญไหม?" en="Do the exact values of Eval matter?" />
+        <H n={10} th="ค่าที่แน่นอนของ Eval สำคัญไหม?" en="Do the exact values of Eval matter?" />
         <p>
           {t(
             <>ในเกม deterministic สิ่งที่สำคัญคือ <b>ลำดับ</b> ของค่าเท่านั้น จะแปลงค่าด้วยฟังก์ชัน <b>monotonic</b> แบบไหน (เพิ่มเมื่ออินพุตเพิ่ม) การตัดสินใจก็เหมือนเดิม เราเรียกค่าแบบนี้ว่า <b>ordinal utility</b> แต่ในเกมที่มีโอกาส มีแค่การแปลงแบบ <b>positive linear</b> (ax + b, a &gt; 0) เท่านั้นที่ไม่เปลี่ยนการตัดสินใจ Eval จึงควร <b>เป็นสัดส่วนกับผลตอบแทนที่คาดหวัง</b></>,
@@ -373,7 +373,7 @@ if state is a CHANCE node then
 
       {/* 11 ----------------------------------------------------------------- */}
       <section id="imperfect" className="t-section">
-        <H id="imperfect" n={11} th="เกมที่ข้อมูลไม่ครบ" en="Games of imperfect information" />
+        <H n={11} th="เกมที่ข้อมูลไม่ครบ" en="Games of imperfect information" />
         <p>
           {t(
             'ตัวอย่างคือเกมไพ่ที่เราไม่เห็นไพ่ของคู่แข่ง ปกติเราคำนวณความน่าจะเป็นของการแจกไพ่แต่ละแบบได้ จึงดูเหมือน "ทอยลูกเต๋าครั้งใหญ่ครั้งเดียวตอนเริ่มเกม"',
@@ -406,7 +406,7 @@ if state is a CHANCE node then
 
       {/* 12 ----------------------------------------------------------------- */}
       <section id="summary" className="t-section">
-        <H id="summary" n={12} th="สรุป" en="Summary" />
+        <H n={12} th="สรุป" en="Summary" />
         <div className="summary-grid">
           <div className="card"><b>{t('ความสมบูรณ์แบบทำไม่ได้จริง', 'Perfection is unattainable')}</b><p className="muted">{t('เกมจริงใหญ่เกินจะค้นจนจบ จึงต้องประมาณค่า (cutoff + Eval)', 'Real games are too big to search to the end, so we must approximate (cutoff + Eval).')}</p></div>
           <div className="card"><b>{t('คิดว่าควรคิดเรื่องอะไร', 'Think about what to think about')}</b><p className="muted">{t('α–β ข้ามการคำนวณที่ไม่มีผลกับคำตอบ ซึ่งเป็นตัวอย่างของ metareasoning', 'α–β skips computations that cannot affect the answer, an example of metareasoning.')}</p></div>

@@ -43,7 +43,7 @@ export function buildTree(depth: number, branching: number, leaves: number[], wi
     }
     const kids: TNode[] = [];
     for (let k = 0; k < branching; k++) kids.push(make(d + 1, withLabels ? `${label}${k + 1}` : ''));
-    return { id: `N${d}-${label || Math.random()}`, kind: d % 2 === 0 ? 'max' : 'min', name: '', label, children: kids };
+    return { id: '', kind: d % 2 === 0 ? 'max' : 'min', name: '', label, children: kids };
   };
   const root = make(0, withLabels ? 'A' : '');
   // BFS naming + stable ids

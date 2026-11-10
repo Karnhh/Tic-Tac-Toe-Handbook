@@ -11,7 +11,7 @@ export default function Home() {
     <main className="page">
       <section className="hero">
         <div>
-          <span className="tag">{t('AI · Game Playing (Adversarial Search)', 'AI · Game Playing (Adversarial Search)')}</span>
+          <span className="tag">AI · Game Playing (Adversarial Search)</span>
           <h1>{t('คู่มือ Tic-Tac-Toe ด้วยหลัก Game Playing ของ AI', 'A Tic-Tac-Toe Handbook for AI Game Playing')}</h1>
           <p className="lead">
             {t(
